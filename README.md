@@ -1,6 +1,6 @@
 # houston
 
-### `houston` is a logging framework for human beigns
+### `houston` is a logging framework for human beings
 
 <img src="visor.png">
 

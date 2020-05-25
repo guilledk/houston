@@ -4,11 +4,19 @@
 # https://www.python.org/dev/peps/pep-0563/
 from __future__ import annotations
 
+import enum
 import time
 import string
 import random
 
 from typing import Optional, Dict, List
+
+
+class EventTag(str, enum.Enum):
+    Default = "default"
+    Warning = "warning"
+    Error = "error"
+    Bug = "bug"
 
 
 class Event:
@@ -17,7 +25,8 @@ class Event:
         self,
         etype: str,
         data: Dict = {},
-        eid: Optional[str] = None
+        eid: Optional[str] = None,
+        tag: EventTag = EventTag.Default
             ):
 
         self.etype = etype
@@ -31,9 +40,9 @@ class Event:
                     string.ascii_letters + string.digits
                     ) for i in range(24)]
                 )
+        self.tag = tag
 
         self.timestamp = time.time()
-
         self.timeline: Optional[Timeline] = None
         self.ancestor: Optional[Event] = None
         self.successors: List[Event] = []
@@ -54,13 +63,15 @@ class Event:
         nevt.ancestor = self
         self.successors.append(nevt)
 
-        self.timeline.place(nevt)
+        if self.timeline:
+            self.timeline.place(nevt)
 
         return nevt
 
     def as_json(self) -> Dict:
         ret = {
             "etype": self.etype,
+            "tag": self.tag,
             "data": self.data,
             "eid": self.eid,
             "timestamp": self.timestamp
@@ -83,60 +94,100 @@ class Timeline:
 
     def __init__(
         self,
-        tid: str
+        name: str,
+        tid: Optional[str] = None
             ):
 
-        self.tid = tid
+        assert isinstance(name, str)
 
+        self.name = name
+
+        if tid:
+            self.tid = tid
+        else:
+            self.tid = ''.join(
+                [random.choice(
+                    string.ascii_letters + string.digits
+                    ) for i in range(24)]
+                )
         self.begin: float = time.time()
         self.end: Optional[float] = None
-        self.events: List[Event] = []
         self.parent: Optional[Timeline] = None
-        self.childs: List[Timeline] = []
+        self.events: Dict[Event] = {}
+        self.childs: Dict[Timeline] = {}
 
     def getev(self, eid: str) -> Event:
-        search = [ev for ev in self.events if eid in ev.eid]
-        assert len(search) == 1
-        return search[0]
+        return self.events[eid]
 
-    def place(self, evt: Event) -> None:
-        if self.end and (evt.timestamp > self.end):
-            raise OutOfBounds
+    def getchild(self, name: str) -> Timeline:
+
+        if name == self.name:
+            return self
+
+        for child in self.childs.values():
+            ret = child.getchild(name)
+            if ret:
+                return ret
+
+        return None
+
+    def place(self, evt: Event) -> Event:
+        # if self.end and (evt.timestamp > self.end):
+        #     raise Timeline.OutOfBounds
 
         evt.timeline = self
-        self.events.append(evt)
+        self.events[evt.eid] = evt
 
-    def fork(self, ntid: str) -> Timeline:
-        nline = Timeline(ntid)
+        return evt
+
+    def fork(self, name: str, tid: Optional[str] = None) -> Timeline:
+        nline = Timeline(name, tid=tid)
         nline.parent = self
-        self.childs.append(nline)
+        self.childs[nline.tid] = nline
         return nline
 
     def join(self) -> None:
+
+        for child in self.childs.values():
+            child.join()
+
         self.end = time.time()
 
+    def reset(self) -> None:
+        self.begin = time.time()
+        self.events = {}
+        self.childs = {}
+        self.end = None
 
-TIMELINES: Dict[Timeline] = {}
+    def as_json(self) -> Dict:
+        ret = {
+            "tid": self.tid,
+            "name": self.name,
+            "begin": self.begin,
+            "events": [evt.as_json() for evt in self.events.values()],
+            "childs": [
+                child.as_json() for child in self.childs.values()
+                ]
+        }
+        if self.end:
+            ret["end"] = self.end
+
+        return ret
 
 
-def getTimeline(tid: str) -> Timeline:
-    if tid not in TIMELINES:
-        TIMELINES[tid] = Timeline(tid)
-
-    return TIMELINES[tid]
+ROOT_TIMELINE = Timeline("root")
 
 
-def dumpTimeline(tid: str) -> Dict:
-    tline = getTimeline(tid)
-    ret = {
-        "tid": tline.tid,
-        "begin": tline.begin,
-        "events": [evt.as_json() for evt in tline.events],
-        "childs": [
-            dumpTimeline(child.tid) for child in tline.childs
-            ]
-    }
-    if tline.end:
-        ret["end"] = tline.end
+def reset_root_timeline() -> None:
+    ROOT_TIMELINE = Timeline("root")
 
-    return ret
+
+def get_timeline(*args) -> Timeline:
+    if len(args) == 0:
+        return ROOT_TIMELINE
+
+    ret = ROOT_TIMELINE.getchild(args[0])
+    if ret:
+        return ret
+
+    return ROOT_TIMELINE.fork(args[0])

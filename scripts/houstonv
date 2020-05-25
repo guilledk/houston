@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import argparse
 
 from datetime import datetime
 
@@ -8,6 +9,8 @@ from typing import Optional, Dict
 
 from tkinter import Tk, TOP, LEFT, Y, NO, filedialog
 from tkinter.ttk import Label, Frame, Button, Treeview, Notebook
+
+from houston import EventTag
 
 
 def get_timeline(root_tline: Dict, tid: str) -> Optional[Dict]:
@@ -49,25 +52,38 @@ class TimelineVisor(Frame):
         tdata: Dict
             ):
 
+        if "end" in tdata:
+            duration = f"{tdata['end'] - tdata['begin']:0.3f}"
+        else:
+            duration = "inf"
+
+        timestmap = datetime.utcfromtimestamp(tdata["begin"]).strftime('%H:%M:%S')
+        decimals = f"{tdata['begin'] % 1:0.2f}"[-2:]
+        timestmap = f"{timestmap}.{decimals}"
+
         newtree = self.viewtree.insert(
             parent if parent != self.viewtree else "",
             "end",
-            text=tdata["tid"],
+            text=tdata["name"],
             values=(
-                f"{tdata['end'] - tdata['begin']:0.3f}",
-                datetime.utcfromtimestamp(tdata["begin"]).strftime('%H:%M:%S')
-                )
+                duration,
+                timestmap
+                ),
+            tags=tdata["tid"]
             )
 
         for tline_data in tdata["childs"]:
             self.add_timeline(newtree, tline_data)
 
-    def load_timeline_file(self):
+    def load_timeline_file(self, path: Optional[str] = None):
         # load file
-        filename = filedialog.askopenfilename(
-            initialdir=".",
-            title="Select timeline file..."
-            )
+        if not path:
+            filename = filedialog.askopenfilename(
+                initialdir=".",
+                title="Select timeline file..."
+                )
+        else:
+            filename = path
 
         with open(filename, "r") as tline_file:
             self.tline_data = json.loads(tline_file.read())
@@ -86,7 +102,7 @@ class TimelineVisor(Frame):
         # get selected timeline id
         tid = self.viewtree.item(
             self.viewtree.focus()
-            )["text"]
+            )["tags"][0]
 
         tline = get_timeline(self.tline_data, tid)
 
@@ -99,14 +115,15 @@ class TimelineVisor(Frame):
 
         # add events
         for event in sorted_events:
+            etimestmap = datetime.utcfromtimestamp(event["timestamp"]).strftime('%H:%M:%S')
+            edecimals = f"{event['timestamp'] % 1:0.2f}"[-2:]
+            etimestmap = f"{etimestmap}.{edecimals}"
             self.eventtree.insert(
                 "",
                 "end",
                 text=event["etype"],
-                values=(
-                    datetime.utcfromtimestamp(event["timestamp"]).strftime('%H:%M:%S')
-                    ),
-                tags=event["eid"]
+                values=(etimestmap),
+                tags=(event["eid"], event["tag"])
                 )
 
     def update_inspector(self, event):
@@ -145,7 +162,7 @@ class TimelineVisor(Frame):
                     "",
                     "end",
                     text=key,
-                    values=(value)
+                    values=(str(value))
                     )
 
     def build(self):
@@ -178,6 +195,10 @@ class TimelineVisor(Frame):
         self.eventtree["columns"] = (
             "timestamp"
             )
+
+        self.eventtree.tag_configure(EventTag.Warning, background="yellow")
+        self.eventtree.tag_configure(EventTag.Error, background="red")
+        self.eventtree.tag_configure(EventTag.Bug, background="purple")
 
         self.eventtree.heading("#0", text="etype")
         self.eventtree.heading("timestamp", text="Timestamp")
@@ -225,6 +246,16 @@ def main():
     root.title("Houston Telemetry Timeline Visor - v0.1.0")
 
     app = TimelineVisor(root)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-f", "--file", type=str,
+        help=f"load timeline from file."
+        )
+    args = parser.parse_args()
+
+    if args.file:
+        app.load_timeline_file(path=args.file)
 
     root.mainloop()
 
