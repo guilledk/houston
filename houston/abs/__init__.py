@@ -51,13 +51,15 @@ class Event:
         self,
         etype: str,
         data: Dict = {},
-        eid: Optional[str] = None
+        eid: Optional[str] = None,
+        tag: EventTag = EventTag.Default
             ) -> Event:
 
         nevt = Event(
             etype,
             data=data,
-            eid=eid
+            eid=eid,
+            tag=tag
             )
 
         nevt.ancestor = self
