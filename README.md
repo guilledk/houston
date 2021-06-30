@@ -1,7 +1,5 @@
 # houston
 
-### `houston` is a logging framework for human beings
-
 <img src="visor.png">
 
 When debugging large distributed applications python std `logging` approaches just dont cut it.
